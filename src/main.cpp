@@ -39,6 +39,8 @@ bool stop=false;
 uint16_t i=0;
 byte a=0;
 String masterData = "";
+uint8_t setupNanoCounter=0;
+
 void sendRequest();
 void readRequest();
 void restartRFID();
@@ -57,26 +59,31 @@ void blinkLed(uint16_t time_Out,uint16_t ms);
 
 void setup()
 {
+  pinMode(RFIDEN,OUTPUT);
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
-  delay(1000);
+  delay(200);
   digitalWrite(2,LOW);
   Serial.begin(9600);
-  rfidOFF();
   nano.disableDebugging();
+  rfidON();
+  setupNano();    
 }
 
 void loop(){
+  while(!Serial.available());
   masterData="";
-  Serial.setTimeout(1000);masterData=Serial.readStringUntil(';');//continuously read incoming data
+  Serial.setTimeout(100);masterData=Serial.readStringUntil(';');//continuously read incoming data
   if (masterData.substring(0,1)=="R"){                           //we have an rfid read request
+    digitalWrite(2,HIGH);
+    delay(500);
+    digitalWrite(2,LOW);
     M=0;tagFoundCount=0;
     uint8_t ind1 = masterData.indexOf(',');
     uint8_t ind2 = masterData.indexOf(',',ind1+1);
     start = masterData.substring(2,ind1).toInt();
     eTime= masterData.substring(ind1+1,ind2).toInt();
     pwr = masterData.substring(ind2+1,masterData.length()).toInt();
-    rfidON();
     nano.startReading();                                        //Begin scanning for tags
     previousMillis=millis();
     while((millis()-previousMillis)<eTime){
@@ -139,16 +146,12 @@ void loop(){
       }
     }
     nano.stopReading();
-    delay(1000);
-    rfidOFF();                                                  //turn off the rfid module once the reading is done
+    delay(100);
   }
-  if (masterData.substring(0,1)=="S"){                          //the master is requesting us to send him the rfid data
-    sendRequest();rfidOFF();
-    if (M==10){esp_restart();}                                  //restart the esp once all the data is sent
-  }
+  if (masterData.substring(0,1)=="S"){sendRequest();}
 }
 void sendRequest(){
-  if ((M<10))
+  while ((M<10))
   {
     tagInfo="";
     for (uint8_t i = 0; i < 12; i++){
@@ -170,18 +173,24 @@ void sendRequest(){
         myData.winnerRSSI[M]=0;
       }
       tagInfo+="*";
+      if (M==9){tagInfo+="&";}
       Serial.print(tagInfo);
+      
       delay(5);
     }else
     {
       tagInfo="#";
+      if (M==9){tagInfo+="&";}
       Serial.print(tagInfo);
       delay(5);
     }
     M++;
   }
     for (uint8_t j = 0; j < 12; j++){
-      myData.tagEPC[M-1][j]={0x00};
+      for (uint8_t i = 0; i < M; i++)
+      {
+        myData.tagEPC[i][j]={0x00};
+      }
     }
 }
 void readRequest() {
@@ -204,37 +213,21 @@ void restartRFID(){
   rfidBusy=false;
 }
 bool setupNano(){
-  nano.msg[0]=1;
-  if (rfidStartup){
-    #ifdef debug
-    Serial.println("rfid startup");
-    #endif
-    rfidBusy=true;
+    nano.msg[0]=1;
     nano.begin(Serial2);
-    Serial2.begin(115200); 
-    // while (nanoSerial.isListening() == false);
-    while (Serial2.available()) Serial2.read();delay(200);
-    nano.setBaud(38400); 
-    Serial2.begin(38400); 
+    Serial2.begin(115200);
+    while(!Serial2);
+    while (Serial2.available()) Serial2.read();
     delay(250);
-    rfidBusy=false;
-  }else{
-    rfidBusy=true;
-    Serial2.begin(38400);
-    rfidBusy=false;
-  }
-  
-  rfidBusy=true;
   if (nanoSetTagProtocol()){//1
     if (nanoSetAntennaPort()){//2
       if (nanoSetRegion(REGION_EUROPE)){//3
         if (nanoSetReadPower(pwr)){//4
           return true;
-          rfidBusy=false;
-        }else {rfidBusy=false;return false;}
-      }else {rfidBusy=false;return false;}
-    }else {rfidBusy=false;return false;}
-  }else {rfidBusy=false;return false;}
+        }else {return false;}
+      }else {return false;}
+    }else {return false;}
+  }else {return false;}
 }
 bool nanoGetVersion(){
   nano.getVersion();
@@ -382,30 +375,20 @@ bool parseResponse(uint8_t ID, uint8_t msg){
 }
 void rfidON(){
   pinMode(RFIDEN,OUTPUT);
-  digitalWrite(RFIDEN,LOW);
-  delay(40);
   digitalWrite(RFIDEN,HIGH);
   delay(40);
-  setupNano();
-  rfidStartup=true;
 }
 void rfidOFF(){
+  // pinMode(RFIDEN,OUTPUT);
+  // digitalWrite(RFIDEN,LOW);
+  // delay(40);
+  // pinMode(RFIDEN,OUTPUT);
+  // digitalWrite(RFIDEN,LOW);
+  // pinMode(RFIDEN,INPUT_PULLDOWN);
+  // digitalWrite(RFIDEN,LOW);
   pinMode(RFIDEN,OUTPUT);
-  digitalWrite(RFIDEN,LOW);
-  delay(40);
-  digitalWrite(RFIDEN,LOW);
-  rfidStartup=true;
 }
 void rfidRestart(){
   rfidOFF();
   rfidON();
-}
-void blinkLed(uint16_t time_Out,uint16_t ms){
-  previousMillis=millis();
-  while((millis()-previousMillis)<time_Out){
-    ledState = !ledState;
-    digitalWrite(Led_esp,ledState);
-    delay(ms);
-    digitalWrite(Led_esp,!ledState);
-  }
 }
