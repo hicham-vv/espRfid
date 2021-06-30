@@ -67,7 +67,10 @@ void setup()
   Serial.begin(9600);
   nano.disableDebugging();
   rfidON();
-  setupNano();    
+  if(!setupNano()){
+    blinkLed(1000,25);
+    esp_restart();
+  }
 }
 
 void loop(){
@@ -84,6 +87,8 @@ void loop(){
     start = masterData.substring(2,ind1).toInt();
     eTime= masterData.substring(ind1+1,ind2).toInt();
     pwr = masterData.substring(ind2+1,masterData.length()).toInt();
+    nano.setReadPower(pwr);
+    delay(10);
     nano.startReading();                                        //Begin scanning for tags
     previousMillis=millis();
     while((millis()-previousMillis)<eTime){
@@ -391,4 +396,13 @@ void rfidOFF(){
 void rfidRestart(){
   rfidOFF();
   rfidON();
+}
+
+void blinkLed(uint16_t time_Out,uint16_t ms){
+  previousMillis=millis();
+  while((millis()-previousMillis)<time_Out){
+    ledState = !ledState;
+    digitalWrite(Led_esp,ledState);
+    delay(ms);
+  }
 }
